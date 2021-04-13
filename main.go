@@ -30,21 +30,21 @@ func main() {
 		}
 
 		// Attach a policy to allow writing logs to CloudWatch
-		// logPolicy, err := iam.NewRolePolicy(ctx, "lambda-log-policy", &iam.RolePolicyArgs{
-		// 	Role: role.Name,
-		// 	Policy: pulumi.String(`{
-		//         "Version": "2012-10-17",
-		//         "Statement": [{
-		//             "Effect": "Allow",
-		//             "Action": [
-		//                 "logs:CreateLogGroup",
-		//                 "logs:CreateLogStream",
-		//                 "logs:PutLogEvents"
-		//             ],
-		//             "Resource": "arn:aws:logs:*:*:*"
-		//         }]
-		//     }`),
-		// })
+		logPolicy, err := iam.NewRolePolicy(ctx, "lambda-log-policy", &iam.RolePolicyArgs{
+			Role: role.Name,
+			Policy: pulumi.String(`{
+		        "Version": "2012-10-17",
+		        "Statement": [{
+		            "Effect": "Allow",
+		            "Action": [
+		                "logs:CreateLogGroup",
+		                "logs:CreateLogStream",
+		                "logs:PutLogEvents"
+		            ],
+		            "Resource": "arn:aws:logs:*:*:*"
+		        }]
+		    }`),
+		})
 
 		// Set arguments for constructing the function resource.
 		args := &lambda.FunctionArgs{
@@ -60,14 +60,16 @@ func main() {
 				},
 			},
 		}
+		if err != nil {
+			return err
+		}
 
 		// Create the lambda using the args.
 		function, err := lambda.NewFunction(
 			ctx,
 			"go-hb",
 			args,
-			// pulumi.DependsOn([]pulumi.Resource{logPolicy}),
-			pulumi.DependsOn([]pulumi.Resource{}),
+			pulumi.DependsOn([]pulumi.Resource{logPolicy}),
 		)
 		if err != nil {
 			return err
@@ -77,6 +79,16 @@ func main() {
 		eventRule, err := cloudwatch.NewEventRule(ctx, "go-hb", &cloudwatch.EventRuleArgs{
 			ScheduleExpression: pulumi.String("cron(0 13 * * ? *)"),
 		})
+		if err != nil {
+			return err
+		}
+
+		_, err = lambda.NewPermission(ctx, "go-hb", &lambda.PermissionArgs{
+			Action:    pulumi.String("lambda:InvokeFunction"),
+			Principal: pulumi.String("events.amazonaws.com"),
+			SourceArn: eventRule.Arn,
+			Function:  function.Name,
+		}, pulumi.Parent(eventRule))
 		if err != nil {
 			return err
 		}
